@@ -140,11 +140,6 @@ which ginkgo || { echo "[ERROR] ginkgo installation failed"; exit 1; }
 
 rm -f *.xml
 echo "[INFO] Running official CSI E2E tests with ginkgo"
-ginkgo -v --junit-report=csi_report.xml ./tests/e2e
 
-ARTIFACTS_DIR="${ARTIFACTS:-/logs/artifacts}"
-
-echo "Using artifacts dir: ${ARTIFACTS_DIR}"
-mkdir -p "${ARTIFACTS_DIR}"
-
-cp -v *.xml "${ARTIFACTS_DIR}/" || echo "No XML files found"
+ls -la $ARTIFACTS/
+ginkgo -v --junit-report=$ARTIFACTS/junit_report.xml ./tests/e2e
