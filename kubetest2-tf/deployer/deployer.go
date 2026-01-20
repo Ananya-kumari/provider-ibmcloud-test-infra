@@ -299,55 +299,111 @@ func (d *deployer) Up() error {
 		}
 	}
 	// --- Generate instance list (IDs and Names) from Terraform output ---
-	if d.FetchInstanceData {
-		klog.Info("Fetching instance ID and Name data from Terraform output...")
+	// --- Generate instance list + metadata (NO Boskos dependency) ---
+    if d.FetchInstanceData {
+	   klog.Info("Generating instance_list.json with PowerVS metadata...")
 
-		allInstances := []map[string]string{}
+	   var instanceList InstanceList
 
-		for _, key := range []string{"master_instance_list", "worker_instance_list"} {
-			rawVal, ok := tfMetaOutput[key]
-			if !ok {
-				klog.Warningf("%s not found in terraform output", key)
-				continue
-			}
+	   // These now come from flags / env / tf vars (NOT boskos)
+	   instanceList.Boskos.Region = d.PowerVSRegion
+	   instanceList.Boskos.Zone = d.PowerVSZone
+	   instanceList.Boskos.ResourceID = d.PowerVSServiceID
 
-			var list []map[string]interface{}
+	   keys := []string{"master_instance_list", "worker_instance_list"}
 
-			rawJSON, ok := rawVal.(json.RawMessage)
-			if !ok {
-				return fmt.Errorf("%s: expected json.RawMessage, got %T", key, rawVal)
-			}
-
-			if err := json.Unmarshal(rawJSON, &list); err != nil {
-				return fmt.Errorf("failed to unmarshal %s: %w", key, err)
-			}
-
-
-			for _, inst := range list {
-				id, name := fmt.Sprint(inst["id"]), fmt.Sprint(inst["name"])
-				if id != "" && name != "" {
-					allInstances = append(allInstances, map[string]string{"id": id, "name": name})
-				}
-			}
+	   for _, key := range keys {
+		   rawVal, ok := tfMetaOutput[key]
+		   if !ok {
+			  klog.Warningf("%s not found in terraform output", key)
+			continue
 		}
 
-		if len(allInstances) == 0 {
-			klog.Warning("No instance data found in Terraform output")
-			return nil
+		rawJSON, ok := rawVal.(json.RawMessage)
+		if !ok {
+			return fmt.Errorf("%s: expected json.RawMessage, got %T", key, rawVal)
 		}
 
-		data, err := json.MarshalIndent(allInstances, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal instance list: %v", err)
+		var instances []Instance
+		if err := json.Unmarshal(rawJSON, &instances); err != nil {
+			return fmt.Errorf("failed to unmarshal %s: %w", key, err)
 		}
 
-		file := filepath.Join(d.tmpDir, "instance_list.json")
-		if err := os.WriteFile(file, data, 0644); err != nil {
-			return fmt.Errorf("failed to write instance list: %v", err)
+		for _, inst := range instances {
+			if inst.ID != "" && inst.Name != "" {
+				instanceList.Instances = append(instanceList.Instances, inst)
+			}
 		}
-
-        klog.Infof("Instance data written to %s.\nAll Instances: %s", file, string(data))
 	}
+
+	if len(instanceList.Instances) == 0 {
+		klog.Warning("No instance data found in Terraform output")
+		return nil
+	}
+
+	data, err := json.MarshalIndent(instanceList, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal instance list: %w", err)
+	}
+
+	file := filepath.Join(d.tmpDir, "instance_list.json")
+	if err := os.WriteFile(file, data, 0644); err != nil {
+		return fmt.Errorf("failed to write instance list: %w", err)
+	}
+
+	klog.Infof("Instance metadata written to %s", file)
+}
+
+
+	// if d.FetchInstanceData {
+	// 	klog.Info("Fetching instance ID and Name data from Terraform output...")
+
+	// 	allInstances := []map[string]string{}
+
+	// 	for _, key := range []string{"master_instance_list", "worker_instance_list"} {
+	// 		rawVal, ok := tfMetaOutput[key]
+	// 		if !ok {
+	// 			klog.Warningf("%s not found in terraform output", key)
+	// 			continue
+	// 		}
+
+	// 		var list []map[string]interface{}
+
+	// 		rawJSON, ok := rawVal.(json.RawMessage)
+	// 		if !ok {
+	// 			return fmt.Errorf("%s: expected json.RawMessage, got %T", key, rawVal)
+	// 		}
+
+	// 		if err := json.Unmarshal(rawJSON, &list); err != nil {
+	// 			return fmt.Errorf("failed to unmarshal %s: %w", key, err)
+	// 		}
+
+
+	// 		for _, inst := range list {
+	// 			id, name := fmt.Sprint(inst["id"]), fmt.Sprint(inst["name"])
+	// 			if id != "" && name != "" {
+	// 				allInstances = append(allInstances, map[string]string{"id": id, "name": name})
+	// 			}
+	// 		}
+	// 	}
+
+	// 	if len(allInstances) == 0 {
+	// 		klog.Warning("No instance data found in Terraform output")
+	// 		return nil
+	// 	}
+
+	// 	data, err := json.MarshalIndent(allInstances, "", "  ")
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed to marshal instance list: %v", err)
+	// 	}
+
+	// 	file := filepath.Join(d.tmpDir, "instance_list.json")
+	// 	if err := os.WriteFile(file, data, 0644); err != nil {
+	// 		return fmt.Errorf("failed to write instance list: %v", err)
+	// 	}
+
+ //        klog.Infof("Instance data written to %s.\nAll Instances: %s", file, string(data))
+	// }
 
 
 	klog.Infof("Kubernetes cluster node inventory: %+v", inventory)
